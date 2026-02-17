@@ -1,11 +1,12 @@
 // Quick timing test
 require("dotenv").config();
 
-const fs = require("fs");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 const ExcelJS = require("exceljs");
+const pino = require("pino");
 
+const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const GOTENBERG_URL = process.env.GOTENBERG_URL || "http://localhost:3000/forms/libreoffice/convert";
 
 async function test() {
@@ -16,9 +17,8 @@ async function test() {
     ws.addRow(["Company " + i, "Account " + i, "Currency USD", 12345.67, 98765.43, 54321.00]);
   }
   const buf = await wb.xlsx.writeBuffer();
-  fs.writeFileSync("/tmp/sample.xlsx", buf);
 
-  console.time("ExcelJS processing");
+  const startExcel = Date.now();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buf);
   workbook.eachSheet((worksheet) => {
@@ -33,14 +33,21 @@ async function test() {
     });
   });
   const modified = await workbook.xlsx.writeBuffer();
-  console.timeEnd("ExcelJS processing");
+  logger.info({ ms: Date.now() - startExcel }, "ExcelJS processing");
 
-  console.time("Gotenberg conversion");
+  const startGotenberg = Date.now();
   const form = new FormData();
-  form.append("files", Buffer.from(modified), { filename: "export.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  form.append("files", Buffer.from(modified), {
+    filename: "export.xlsx",
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   form.append("landscape", "true");
   const res = await fetch(GOTENBERG_URL, { method: "POST", body: form });
   await res.buffer();
-  console.timeEnd("Gotenberg conversion");
+  logger.info({ ms: Date.now() - startGotenberg }, "Gotenberg conversion");
 }
-test();
+
+test().catch((err) => {
+  logger.error({ err }, "Timing test failed");
+  process.exit(1);
+});

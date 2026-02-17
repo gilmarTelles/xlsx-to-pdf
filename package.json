@@ -1,20 +1,31 @@
 {
   "name": "xlsx-to-pdf",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Secure XLSX to PDF conversion microservice",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "test": "jest --forceExit --detectOpenHandles"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
     "form-data": "^4.0.5",
+    "helmet": "^8.1.0",
     "multer": "^2.0.2",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "p-limit": "^3.1.0",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.1.0"
   }
 }
