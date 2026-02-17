@@ -27,6 +27,7 @@ const config = {
   rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX) || 30,
   apiKey: process.env.API_KEY || "",
   corsOrigin: process.env.CORS_ORIGIN || false,
+  memoryLimitMB: parseInt(process.env.MEMORY_LIMIT_MB) || 512,
 };
 
 // --- Logger ---
@@ -96,10 +97,25 @@ function isValidXlsx(buffer) {
   return buffer.subarray(0, 4).equals(XLSX_MAGIC);
 }
 
+function sanitizeFilename(name) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+// --- Memory tracking ---
+function getMemoryUsageMB() {
+  return Math.round(process.memoryUsage().rss / 1024 / 1024);
+}
+
 // --- Routes ---
 
 app.post("/convert", upload.single("file"), async (req, res) => {
   try {
+    const currentMemory = getMemoryUsageMB();
+    if (currentMemory > config.memoryLimitMB) {
+      req.log.warn({ memoryMB: currentMemory, limitMB: config.memoryLimitMB }, "Memory limit exceeded, rejecting request");
+      return res.status(503).json({ error: "Server is under heavy load, please try again later" });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
@@ -183,7 +199,7 @@ app.post("/convert", upload.single("file"), async (req, res) => {
     }
 
     const originalName = req.file.originalname || "export.xlsx";
-    const pdfName = originalName.replace(/\.xlsx$/i, ".pdf");
+    const pdfName = sanitizeFilename(originalName.replace(/\.xlsx$/i, ".pdf"));
     res.set({
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${pdfName}"`,
@@ -206,7 +222,8 @@ app.post("/convert", upload.single("file"), async (req, res) => {
 });
 
 app.get("/health", async (req, res) => {
-  const health = { status: "ok", uptime: process.uptime() };
+  const memoryMB = getMemoryUsageMB();
+  const health = { status: "ok", uptime: process.uptime(), memoryMB };
 
   try {
     // Derive Gotenberg health URL from conversion URL

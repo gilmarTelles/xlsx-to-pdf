@@ -259,6 +259,75 @@ describe("POST /convert - options", () => {
   });
 });
 
+// ---- Filename sanitization ----
+
+describe("POST /convert - filename sanitization", () => {
+  test("strips dangerous characters from filename", async () => {
+    mockFetchResponse = {
+      ok: true,
+      status: 200,
+      buffer: async () => FAKE_PDF,
+    };
+
+    const xlsxBuf = await createXlsxBuffer();
+    const res = await request(app)
+      .post("/convert")
+      .attach("file", xlsxBuf, 'evil"; rm -rf /.xlsx');
+
+    expect(res.status).toBe(200);
+    const disposition = res.headers["content-disposition"];
+    // Should be sanitized — no quotes, semicolons, or spaces inside the filename
+    expect(disposition).toMatch(/filename="[a-zA-Z0-9._-]+"/);
+    expect(disposition).not.toMatch(/rm/);
+  });
+
+  test("handles filenames with spaces and special chars", async () => {
+    mockFetchResponse = {
+      ok: true,
+      status: 200,
+      buffer: async () => FAKE_PDF,
+    };
+
+    const xlsxBuf = await createXlsxBuffer();
+    const res = await request(app)
+      .post("/convert")
+      .attach("file", xlsxBuf, "my report (2024).xlsx");
+
+    expect(res.status).toBe(200);
+    const disposition = res.headers["content-disposition"];
+    // Should be sanitized — no parens or spaces
+    expect(disposition).toMatch(/filename="[a-zA-Z0-9._-]+"/);
+  });
+});
+
+// ---- Memory pressure ----
+
+describe("POST /convert - memory limit", () => {
+  test("returns 503 when memory limit is exceeded", async () => {
+    // Set limit to 1 MB — any Node process exceeds this
+    const original = config.memoryLimitMB;
+    config.memoryLimitMB = 1;
+
+    const xlsxBuf = await createXlsxBuffer();
+    const res = await request(app)
+      .post("/convert")
+      .attach("file", xlsxBuf, "test.xlsx");
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/heavy load/i);
+
+    config.memoryLimitMB = original;
+  });
+
+  test("health endpoint reports memory usage", async () => {
+    mockFetchResponse = { ok: true, status: 200 };
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body.memoryMB).toBeDefined();
+    expect(typeof res.body.memoryMB).toBe("number");
+  });
+});
+
 // ---- 404 catch-all ----
 
 describe("404 catch-all", () => {
