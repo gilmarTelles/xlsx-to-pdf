@@ -1,0 +1,202 @@
+openapi: 3.0.3
+info:
+  title: xlsx-to-pdf
+  description: Converts Excel (.xlsx) files to PDF via Gotenberg (LibreOffice).
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+paths:
+  /convert:
+    post:
+      summary: Convert an XLSX file to PDF
+      operationId: convertXlsxToPdf
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The .xlsx file to convert
+                fontSize:
+                  type: string
+                  default: "9"
+                  description: Font size in points (clamped to 6-72)
+                landscape:
+                  type: string
+                  enum: ["true", "false"]
+                  default: "true"
+                  description: Page orientation
+                singlePageSheets:
+                  type: string
+                  enum: ["true", "false"]
+                  default: "true"
+                  description: Fit each sheet to a single page
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="report.pdf"
+        "400":
+          description: Validation error (no file or invalid file type)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                noFile:
+                  value:
+                    error: No file uploaded
+                invalidType:
+                  value:
+                    error: Invalid file type. Only .xlsx files are accepted
+        "401":
+          description: Unauthorized (API key missing or invalid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Unauthorized
+        "408":
+          description: Request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Request timeout
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: File too large
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Too many requests, please try again later
+        "502":
+          description: Gotenberg conversion failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: PDF conversion failed
+        "503":
+          description: Server under heavy load
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Server is under heavy load, please try again later
+        "504":
+          description: Gotenberg timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: PDF conversion timed out
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Internal server error
+
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: ok
+                uptime: 3600.5
+                memoryMB: 85
+                gotenberg: reachable
+        "503":
+          description: Service is degraded (Gotenberg unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: degraded
+                uptime: 3600.5
+                memoryMB: 85
+                gotenberg: unreachable
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Optional — only enforced when API_KEY is set in environment
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
+    Health:
+      type: object
+      required:
+        - status
+        - uptime
+        - memoryMB
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        uptime:
+          type: number
+          description: Server uptime in seconds
+        memoryMB:
+          type: integer
+          description: RSS memory usage in MB
+        gotenberg:
+          type: string
+          enum: [reachable, unhealthy, unreachable]

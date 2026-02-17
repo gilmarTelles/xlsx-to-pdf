@@ -1,0 +1,16 @@
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+
+  xlsx-to-pdf:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      GOTENBERG_URL: http://gotenberg:3000/forms/libreoffice/convert
+    env_file:
+      - .env
+    depends_on:
+      - gotenberg

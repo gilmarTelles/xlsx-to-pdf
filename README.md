@@ -16,22 +16,28 @@ Client ──POST /convert──▶ Express (ExcelJS processing) ──▶ Goten
 3. The modified spreadsheet is forwarded to Gotenberg for PDF conversion
 4. The generated PDF is returned to the client
 
-## Prerequisites
-
-- **Node.js** >= 18
-- **Gotenberg** with LibreOffice module — easiest via Docker:
-
-```bash
-docker run --rm -p 3000:3000 gotenberg/gotenberg:8
-```
-
-## Setup
+## Quick Start (Docker Compose)
 
 ```bash
 git clone https://github.com/gilmarTelles/xlsx-to-pdf.git
 cd xlsx-to-pdf
-npm install
 cp .env.example .env   # edit .env if needed
+docker compose up -d
+```
+
+This starts both the app (port `3001`) and Gotenberg together. No other dependencies needed.
+
+## Manual Setup
+
+**Prerequisites:** Node.js >= 18, Gotenberg 8
+
+```bash
+# Start Gotenberg
+docker run --rm -p 3000:3000 gotenberg/gotenberg:8
+
+# Start the app
+npm install
+cp .env.example .env
 node index.js
 ```
 
@@ -64,7 +70,7 @@ Converts an uploaded Excel file to PDF.
 
 **Response** — `application/pdf`
 
-Returns the converted PDF file as a download (`export.pdf`).
+Returns the converted PDF file as a download (uses the original filename, e.g. `spreadsheet.pdf`).
 
 **Example with curl:**
 
@@ -88,6 +94,10 @@ The service is designed to run behind PM2:
 pm2 start index.js --name xlsx-to-pdf
 pm2 save
 ```
+
+## API Documentation
+
+Full OpenAPI 3.0 spec is available in [`openapi.yaml`](openapi.yaml). You can view it in any Swagger-compatible tool (e.g. [Swagger Editor](https://editor.swagger.io/)).
 
 ## Benchmarking
 
