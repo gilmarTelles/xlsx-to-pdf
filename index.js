@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const ExcelJS = require("exceljs");
@@ -58,8 +59,10 @@ app.use(
 // API key middleware (opt-in: only enforced when API_KEY is set)
 app.use((req, res, next) => {
   if (!config.apiKey) return next();
-  const provided = req.headers["x-api-key"];
-  if (provided !== config.apiKey) {
+  const provided = req.headers["x-api-key"] || "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(config.apiKey);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();
@@ -90,7 +93,7 @@ const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 function isValidXlsx(buffer) {
   if (!buffer || buffer.length < 4) return false;
-  return buffer.slice(0, 4).equals(XLSX_MAGIC);
+  return buffer.subarray(0, 4).equals(XLSX_MAGIC);
 }
 
 // --- Routes ---
@@ -105,7 +108,8 @@ app.post("/convert", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Invalid file type. Only .xlsx files are accepted" });
     }
 
-    const fontSize = parseInt(req.body.fontSize) || config.defaultFontSize;
+    const rawFontSize = parseInt(req.body.fontSize) || config.defaultFontSize;
+    const fontSize = Math.min(Math.max(rawFontSize, 6), 72);
     const landscape = req.body.landscape || "true";
     const singlePageSheets = req.body.singlePageSheets || "true";
 
@@ -178,9 +182,11 @@ app.post("/convert", upload.single("file"), async (req, res) => {
       return res.status(pdfBuffer.statusCode).json({ error: pdfBuffer.message });
     }
 
+    const originalName = req.file.originalname || "export.xlsx";
+    const pdfName = originalName.replace(/\.xlsx$/i, ".pdf");
     res.set({
       "Content-Type": "application/pdf",
-      "Content-Disposition": 'attachment; filename="export.pdf"',
+      "Content-Disposition": `attachment; filename="${pdfName}"`,
       "Content-Length": pdfBuffer.data.length,
     });
     res.send(pdfBuffer.data);
@@ -225,6 +231,11 @@ app.get("/health", async (req, res) => {
 
   const statusCode = health.status === "ok" ? 200 : 503;
   res.status(statusCode).json(health);
+});
+
+// --- 404 catch-all ---
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found" });
 });
 
 // --- Server & graceful shutdown ---

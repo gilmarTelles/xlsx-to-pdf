@@ -81,24 +81,12 @@ describe("POST /convert - validation", () => {
     expect(res.body.error).toMatch(/invalid file type/i);
   });
 
-  test("returns 413 for oversized file", async () => {
-    // Temporarily set a very small limit
-    const original = config.maxFileSize;
-    config.maxFileSize = 100;
-
-    // We need a fresh multer instance for the limit change to take effect,
-    // but since multer is configured at module load, we test the error handler
-    // by sending a file that's larger than the original limit would allow
-    // For this test, we'll verify the error handler exists by checking the
-    // endpoint handles the LIMIT_FILE_SIZE error code
-    config.maxFileSize = original;
-
-    // Instead, test with a buffer that has valid magic bytes but let's verify
-    // the error response format
+  test("returns 400 for empty/tiny file with invalid magic bytes", async () => {
     const res = await request(app)
       .post("/convert")
       .attach("file", Buffer.alloc(10), "tiny.txt");
     expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid file type/i);
   });
 });
 
@@ -154,7 +142,7 @@ describe("POST /convert - conversion", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toMatch(/application\/pdf/);
-    expect(res.headers["content-disposition"]).toMatch(/export\.pdf/);
+    expect(res.headers["content-disposition"]).toMatch(/test\.pdf/);
     expect(res.body).toEqual(FAKE_PDF);
   });
 
@@ -226,16 +214,57 @@ describe("Security headers", () => {
 });
 
 describe("Rate limiter", () => {
-  test("returns 429 after exceeding limit", async () => {
-    // Set a very low rate limit for this test
-    const originalMax = config.rateLimitMax;
-
-    // The rate limiter is configured at module load time, so we can't
-    // easily change it per-test. Instead we verify the headers are present.
+  test("includes rate limit headers in responses", async () => {
+    mockFetchResponse = { ok: true, status: 200 };
     const res = await request(app).get("/health");
     expect(res.headers["ratelimit-limit"]).toBeDefined();
     expect(res.headers["ratelimit-remaining"]).toBeDefined();
+  });
+});
 
-    config.rateLimitMax = originalMax;
+// ---- Filename & fontSize tests ----
+
+describe("POST /convert - options", () => {
+  test("uses original filename in Content-Disposition", async () => {
+    mockFetchResponse = {
+      ok: true,
+      status: 200,
+      buffer: async () => FAKE_PDF,
+    };
+
+    const xlsxBuf = await createXlsxBuffer();
+    const res = await request(app)
+      .post("/convert")
+      .attach("file", xlsxBuf, "report.xlsx");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toMatch(/report\.pdf/);
+  });
+
+  test("clamps fontSize to valid range", async () => {
+    mockFetchResponse = {
+      ok: true,
+      status: 200,
+      buffer: async () => FAKE_PDF,
+    };
+
+    const xlsxBuf = await createXlsxBuffer();
+    // fontSize=200 should be clamped, not cause an error
+    const res = await request(app)
+      .post("/convert")
+      .field("fontSize", "200")
+      .attach("file", xlsxBuf, "test.xlsx");
+
+    expect(res.status).toBe(200);
+  });
+});
+
+// ---- 404 catch-all ----
+
+describe("404 catch-all", () => {
+  test("returns JSON 404 for undefined routes", async () => {
+    const res = await request(app).get("/nonexistent");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
   });
 });
